@@ -1,0 +1,106 @@
+<?xml version="1.0"?>
+<project name="Galactic-Clash-Tools" default="jar" basedir=".">
+
+    <property name="company.name" value="Zudeick" />
+    <property name="project.prefix" value="de" />
+    <property name="project.path" value="zudeick" />
+    <property name="project.name" value="galacticclash" />
+    <property name="main.class" value="ADBClient" />
+
+    <property name="jar.name" value="${project.name}.jar" />
+    <property name="javac.debug" value="on" />
+
+    <property name="build.dir" value="${basedir}/build" />
+    <property name="conf.dir" value="${basedir}/conf" />
+    <property name="dist.dir" value="${basedir}/dist" />
+    <property name="doc.dir" value="${basedir}/docs" />
+    <property name="lib.dir" value="${basedir}/lib" />
+    <property name="src.dir" value="${basedir}/src" />
+
+    <property name="dist.lib" value="${dist.dir}/lib" />
+    <property name="build.classes" value="${build.dir}/classes" />
+
+    <path id="class.path">
+        <fileset dir="${dist.lib}">
+            <include name="**/*.jar" />
+        </fileset>
+    </path>
+
+    <target name="clean-build">
+        <delete dir="${build.dir}" />
+    </target>
+
+    <target name="clean-dist">
+        <delete dir="${dist.dir}/*" />
+    </target>
+
+    <target name="prepare-build" depends="clean-build">
+        <mkdir dir="${build.dir}" />
+        <mkdir dir="${build.classes}" />
+    </target>
+
+    <target name="prepare-bin" depends="clean-dist">
+        <mkdir dir="${dist.dir}" />
+        <mkdir dir="${dist.lib}" />
+    </target>
+
+    <target name="copy-lib" depends="prepare-bin,prepare-build">
+        <copy verbose="on" todir="${dist.lib}">
+            <fileset dir="${lib.dir}">
+                <include name="**/*.jar" />
+            </fileset>
+        </copy>
+
+        <copy verbose="on" todir="${build.classes}/${project.prefix}/${project.path}">
+            <fileset dir="${src.dir}/${project.prefix}/${project.path}">
+                <include name="**/*.properties" />
+            </fileset>
+        </copy>
+
+        <copy verbose="on" todir="${build.classes}">
+            <fileset dir="${conf.dir}">
+                <include name="*.properties" />
+            </fileset>
+        </copy>
+
+    </target>
+
+    <target name="compile" depends="copy-lib" >
+        <javac srcdir="${src.dir}" destdir="${build.classes}" encoding="iso-8859-1" includeantruntime="false" debug="true" debuglevel="lines,vars,source">
+            <classpath refid="class.path" />
+        </javac>
+    </target>
+
+    <target name="jar" depends="compile">
+        <manifestclasspath property="lib.list" jarfile="${dist.dir}/${jar.name}">
+            <classpath refid="class.path"/>
+        </manifestclasspath>
+
+        <jar jarfile="${jar.name}" basedir="${build.classes}" compress="false" destfile="${dist.dir}/${jar.name}">
+            <manifest>
+                <attribute name="Built-By" value="Christian Zudeick" />
+                <attribute name="Main-Class" value="${project.prefix}.${project.path}.${project.name}.${main.class}" />
+                <attribute name="Class-Path" value="${lib.list}"/>
+            </manifest>
+        </jar>
+    </target>
+
+    <target name="run-default" >
+        <java jar="${dist.dir}/${jar.name}" fork="true" />
+    </target>
+
+    <target name="run-client" >
+        <java classname="de.zudeick.galacticclash.ADBClient">
+            <classpath>
+                <pathelement location="${dist.dir}/${jar.name}"/>
+            </classpath>
+        </java>
+    </target>
+    <target name="run-import" >
+        <java classname="de.zudeick.galacticclash.ImportTCPDump">
+            <classpath>
+                <pathelement location="${dist.dir}/${jar.name}"/>
+            </classpath>
+        </java>
+    </target>
+</project>
