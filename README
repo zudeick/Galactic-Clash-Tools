@@ -1,0 +1,37 @@
+Informations & Instructions
+
+Prologue
+I decided to quit playing GC.
+But as I invested a lot of time into those Scripts provided here,
+I decided to do not just delete them all and give some other
+interested Devlopers and Scripters the possibility to continue and improve my work.
+With this in Mind, I wish you all the best and lots of fun.
+
+Your Options:
+You have two options of gathering informations.
+1). with a Linux Server, OpenVPN and a Android Mobile
+2). with a Windows PC, a Android Emulator (Andyroid / Bluestacks)
+
+The way you should go depends on what you want / need / planning to do.
+
+With the First Option you'll get all informations about all Accounts that you run on your Android Device
+including all informations you'll get with the Second Option.
+
+The Second Option is the more easy way, but its only for getting Galaxy informations
+(Planet positions, Alliance and Player names, Debris Fields).
+
+...The Easy way first...
+ - Setup your Android Emulator (+ your GC Client)
+ - Setup Wireshark
+ - Setup ADB (Android Debuging Bridge)
+ - Setup "Galactic-Clash-Tools.properties" with you Properties
+ - Start Wireshark, start logging all GC Traffic
+ - Run ADBClient.java
+ - Save all Packeges logged with Wireshark as Text File (with Bytes, without headers, paged)
+ - Run ImportTCPDump.java
+ 
+ Now you have all Galaxy Informations as JSON Text in your DB. Parse it and do whatever you like with the Informations.
+ 
+ ...and now the more complex way...
+ 
+ 
