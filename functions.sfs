@@ -1,0 +1,900 @@
+$//~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+	$return{}
+$//~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+	$$gc_process_object{object}
+    $$gc_typify_object{object}
+    $$gc_setGlobal_curlys
+$//~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+$//~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+$//:$$gc_process_object{_object}
+	$*gc_process_object{_object}{
+		$set{object}{$hashTable.new
+			{data}{$get{_object}}
+		}
+
+		$if{$array.contains{$array.new{error}{back}}{$get{object(data(status))}{}}}{
+			$return{}
+		}
+
+		$$gc_typify_object{$get{object}}
+
+	$//:ignored
+		$set{ignored}{$array.new
+			{ok}
+			{empty list}
+			{empty}
+			{chat}
+			{pre_match_state}
+			{action response}
+			{fleet action (1)}
+			{fleet action (2)}
+			{MessageList}
+			{Raport}
+			{intelligence}
+		}
+
+		$array.forEach{$get{object(types)}}{object_type}{
+			$if{$array.contains{$get{ignored}}{$get{object_type}}}{
+				$continue{}
+			}
+
+			$if{$existsLocal{object_type(info)}}{
+				$set{object_type}{info}
+			}
+
+			$switch{$get{object_type}}{
+			$//	$$common_socket_debug_plain{no handle for ($get{object_type}), ignore....}
+			}
+			{galaxy}{
+				$set{planet_id_set}{$array.new}
+
+				$set{this}{$hashTable.new
+					{galaxy}{$get{object(data(result(galaxy)))}{-1}}
+					{system}{$get{object(data(result(system)))}{-1}}
+				}
+
+				$array.forEach{$hashTable.getValues2{$get{object(data(result(planets)))}}}{planet}{
+					$switch{1}{
+						$hashTable.combine{$get{this}}{$hashTable.new
+							{galaxy} {$$common_value{$array.parse{$get{planet(position)}}{:}}{[0]}}
+							{system} {$$common_value{$array.parse{$get{planet(position)}}{:}}{[1]}}
+						}
+
+						$hashTable.combine{$get{planet}}{$hashTable.new
+							{player_id}      {$get{planet(userid)}}
+							{galaxy}         {$$common_value{$array.parse{$get{planet(position)}}{:}}{[0]}}
+							{system}         {$$common_value{$array.parse{$get{planet(position)}}{:}}{[1]}}
+							{position}       {$$common_value{$array.parse{$get{planet(position)}}{:}}{[2]}}
+
+							{derbis_metal}   {}
+							{derbis_crystal} {}
+						}
+
+						$if{$or
+							{$existsLocal{planet(derbis(metal))}}
+							{$existsLocal{planet(derbis(crystal))}}
+						}{
+							$hashTable.combine{$get{planet}}{$hashTable.new
+								{derbis_metal}   {$replace{$get{planet(derbis(metal))}{}}{,}{}}
+								{derbis_crystal} {$replace{$get{planet(derbis(crystal))}{}}{,}{}}
+							}
+						}
+
+						$if{$not{$equals{$get{planet(ally_id)}{-1}}{-1}}}{
+							$set{alliance}{$hashTable.new
+								{table_name}{gc_alliance}
+								{object}{$hashTable.new
+									{id}        {$get{planet(ally_id)}}
+									{name}      {$get{planet(ally_name)}{}}
+								}
+							}
+							$if{$isEmpty{$get{alliance(name)}{}}}{
+								$hashTable.removeKey{$get{alliance}}{name}
+							}
+
+							$$meta_insert_or_update{$get{alliance}}
+						}
+
+						$$meta_insert_or_update{$hashTable.new
+							{table_name}{gc_player}
+							{object}{$hashTable.new
+								{alliance_id}       {$if{$equals{$get{planet(ally_id)}{-1}}{-1}}{}{$get{planet(ally_id)}}}
+								{id}                {$get{planet(player_id)}}
+								{name}              {$get{planet(username)}}
+								{inactive}          {$array.contains{$get{planet(class)}{$array.new}}{inactive}}
+								{longinactive}      {$array.contains{$get{planet(class)}{$array.new}}{longinactive}}
+								{honor}             {$get{planet(honor)}{}}
+								{target_flag}       {$get{planet(target_flag)}{}}
+								{battle_flag}       {$get{planet(battle_flag)}{}}
+								{honor_flag}        {$get{planet(honor_flag)}{}}
+								{is_stronger_group} {$get{planet(is_stronger_group)}{}}
+							}
+						}
+
+						$set{planet(type)}{$get{planet(type)}{1}}
+
+						$set{serialized}{$$meta_serialize{gc_planet}{$get{planet}}}
+						$$meta_insert_or_update{$hashTable.new
+							{table_name}{gc_planet}
+							{object}{$get{serialized}}
+						}
+
+						$array.add{$get{planet_id_set}}{$get{planet(id)}}
+					}
+				$//:npc
+					{$existsLocal{planet(npc_level)}}{
+					$//	$$common_socket_debug_json{$get{planet}}{NPC}
+					}
+				}
+				$void{$$js_socket_jquery{$hashTable.new
+					{selector}{#gc-listener-update}
+					{method}{prepend}
+					{arguments}{<div>[$get{this(galaxy)}:$get{this(system)}:*]</div>}
+					{room}{$getProperty{parent}-gc-listener-update}
+				}}
+				$set{sql}{
+					DELETE x0, x1, x2, x3
+					           FROM gc_planet   x0
+					LEFT OUTER JOIN gc_building x1 ON x0.id = x1.planet_id
+					LEFT OUTER JOIN gc_fleet    x2 ON x0.id = x2.planet_id
+					LEFT OUTER JOIN gc_defense  x3 ON x0.id = x3.planet_id
+					WHERE x0.galaxy    = $sql.number{$get{this(galaxy)}}
+					  AND x0.system    = $sql.number{$get{this(system)}}
+					  AND x0.type      = $sql.number{1} $// Nur Planeten, keine Monde löschen.
+					$if{$more{$get{planet_id_set}}{0}}{
+						AND x0.id NOT IN ($array.tokenize{$get{planet_id_set}}{,})
+					}
+				}
+
+				$try{
+					$sql.update{portalDB}{$get{sql}}
+					$set{consume}{1}
+				}{
+					$$common_socket_debug_json{$get{object(data)}}
+					$$common_socket_debug_json{$get{planet_id_set}}
+					$$common_socket_debug_sql{$get{sql}}
+					$$common_socket_debug_exception{}
+					$set{consume}{0}
+				}
+
+			}
+			{ally_search_result}{
+				$array.forEach{$get{object(data(result(info(results))))}}{alliance}{
+					$$meta_insert_or_update{$hashTable.new
+						{table_name}{gc_alliance}
+						{object}{$hashTable.new
+							{id}        {$get{alliance(id)}}
+							{name}      {$get{alliance(name)}}
+							{rank}      {$get{alliance(rank)}}
+						}
+					}
+				}
+			}
+			{ally_apply_send}{
+				$if{$existsLocal{object(data(result(info)))}}{
+					$set{info}{$get{object(data(result(info)))}}
+					$$meta_insert_or_update{$hashTable.new
+						{table_name}{gc_alliance}
+						{object}{$hashTable.new
+							{id}        {$get{info(ally_info(id))}}
+							{name}      {$get{info(ally_info(name))}}
+							{rank}      {$get{info(ally_info(rank))}}
+							{points}    {$get{info(ally_info(points))}}
+						}
+					}
+					$array.forEach{$get{info(Memberlist)}}{member}{
+						$$meta_insert_or_update{$hashTable.new
+							{table_name}{gc_player}
+							{object}{$hashTable.new
+								{id}          {$get{member(id)}}
+								{alliance_id} {$get{info(ally_info(id))}}
+								{name}        {$get{member(username)}}
+								{inactive}    {$moreOrEqual{$get{member(last_online)}}{7}}
+								{longinactive}{$moreOrEqual{$get{member(last_online)}}{14}}
+								{points}      {$replace{$get{member(points)}}{,}{}}
+							}
+						}
+					}
+				}
+			}
+			{alliance_01}{
+				$array.forEach{$get{object(data(result))}}{alliance}{
+					$$meta_insert_or_update{$hashTable.new
+						{table_name}{gc_alliance}
+						{object}{$hashTable.new
+							{id}        {$get{alliance(id)}}
+							{name}      {$get{alliance(name)}}
+							{rank}      {$get{alliance(rank)}}
+							{points}    {$get{alliance(point)}}
+						}
+					}
+				}
+			}
+			{rangelist}{
+				$set{type_hash}{$hashTable.new
+					{1}{Total}
+					{3}{Forschung}
+					{4}{Gebäude}
+					{6}{Event}
+					{7}{Ehre}
+					{8}{Militär}
+				}
+
+			$//	$$common_socket_debug_json{$get{object}}{RANGELIST}
+
+				$switch{$get{object(data(result(type)))}{}}{
+				$//	$$common_socket_debug_json{$get{object}}{RANGELIST}
+				}
+				{6}{
+				$//	$$common_socket_debug_json{$get{object}}{RANGELIST}
+					$if{$equals{$get{object(data(result(who)))}{}}{1}}{
+						$array.forEach{$get{object(data(result(RangeList)))}}{player}{
+
+							$$meta_insert_or_update{$hashTable.new
+								{table_name}{gc_alliance}
+								{object}{$hashTable.new
+									{id}        {$get{player(allyid)}}
+									{name}      {$get{player(allyname)}}
+								}
+							}
+
+							$set{name_parts}{$array.parse{$get{player(name)}}{:}}
+
+							$$meta_insert_or_update{$hashTable.new
+								{table_name}{gc_player}
+								{object}{$hashTable.new
+									{id}               {$get{player(id)}}
+									{alliance_id}      {$get{player(allyid)}}
+									{name}             {$trim{$get{name_parts[1]}}}
+									{inactive}         {$$meta_object{gc_player}{inactive}{id}{$get{player(id)}}}
+									{longinactive}     {$$meta_object{gc_player}{longinactive}{id}{$get{player(id)}}}
+									{tournament_group} {$trim{$replace{$get{name_parts[0]}}{G}{}}}
+								}
+							}
+						}
+					}
+				}
+				{1}{
+				$// kumuliert
+					$switch{$get{object(data(result(who)))}{}}{
+				$//:players | 1 | top 30
+				$//:players | 3 | around 'me'
+						$array.forEach{$get{object(data(result(RangeList)))}}{player}{
+							$$meta_insert_or_update{$hashTable.new
+								{table_name}{gc_alliance}
+								{object}{$hashTable.new
+									{id}        {$get{player(allyid)}}
+									{name}      {$get{player(allyname)}}
+								}
+							}
+
+							$$meta_insert_or_update{$hashTable.new
+								{table_name}{gc_player}
+								{object}{$hashTable.new
+									{id}          {$get{player(id)}}
+									{alliance_id} {$get{player(allyid)}}
+									{name}        {$get{player(name)}}
+									{inactive}    {$$meta_object{gc_player}{inactive}{id}{$get{player(id)}}}
+									{longinactive}{$$meta_object{gc_player}{longinactive}{id}{$get{player(id)}}}
+									{rank}        {$get{player(rank)}}
+									{points}      {$replace{$get{player(points)}}{,}{}}
+								}
+							}
+						}
+					}
+				$//:alliances | 2 | top 30
+					{2}{
+						$array.forEach{$get{object(data(result(RangeList)))}}{alliance}{
+							$$meta_insert_or_update{$hashTable.new
+								{table_name}{gc_alliance}
+								{object}{$hashTable.new
+									{id}        {$get{alliance(id)}}
+									{name}      {$get{alliance(name)}}
+									{rank}      {$get{alliance(rank)}}
+									{points}    {$replace{$get{alliance(points)}}{,}{}}
+								}
+							}
+						}
+					}
+				}
+			}
+			{info}{$void{<block>}
+			$//	$$common_socket_debug_json{$get{object}}
+				$set{object(planet_id)}{$get{object(data(result(buildInfo(result(PlanetInfo(id))))))}{-1}}
+				$set{object(player_id)}{$$meta_object{gc_planet}{player_id}{$array.new
+					{$array.new{id}{=}{$get{object(planet_id)}}}
+				}}
+
+				$set{_player}{$$meta_object{gc_player}{}{$array.new
+					{$array.new{id}{=}{$get{object(player_id)}}}
+				}}
+				$set{_planet}{$$meta_object{gc_planet}{}{$array.new
+					{$array.new{id}{=}{$get{object(planet_id)}}}
+				}}
+
+				$if{$equals{$get{_planet(id)}}{-1}}{
+					$return{-not jet-}
+				}
+				$void{$$js_socket_jquery{$hashTable.new
+					{selector}{#gc-listener-update}
+					{method}{prepend}
+					{arguments}{<div>$get{_player(name)}:$get{_planet(name)} [$get{_planet(galaxy)}:$get{_planet(system)}:$get{_planet(position)}]</div>}
+					{room}{$getProperty{parent}-gc-listener-update}
+				}}
+				$array.forEach{$hashTable.getKeys2{$get{object(data(result))}}}{key}{
+					$set{info}{$get{object(data(result($get{key})))}}
+
+					$switch{$get{info(status)}{}}{}{error}{$continue{}}
+
+					$switch{$get{key}{}}{
+					$//	$$common_socket_debug_json{$get{info}}{$toUpperCase{$get{key}{}}}
+					}
+				$//:<allianceInfo>
+					{allianceInfo}{$void{<block>}
+						$if{$existsLocal{info(result(info))}}{
+							$set{info}{$get{info(result(info))}}
+							$$meta_insert_or_update{$hashTable.new
+								{table_name}{gc_alliance}
+								{object}{$hashTable.new
+									{id}        {$get{info(ally_info(id))}}
+									{name}      {$get{info(ally_info(name))}}
+									{rank}      {$get{info(ally_info(rank))}}
+									{points}    {$get{info(ally_info(points))}}
+								}
+							}
+							$array.forEach{$get{info(Memberlist)}}{member}{
+								$$meta_insert_or_update{$hashTable.new
+									{table_name}{gc_player}
+									{object}{$hashTable.new
+										{id}          {$get{member(id)}}
+										{alliance_id} {$get{info(ally_info(id))}}
+										{name}        {$get{member(username)}}
+										{inactive}    {$moreOrEqual{$get{member(last_online)}}{7}}
+										{longinactive}{$moreOrEqual{$get{member(last_online)}}{14}}
+										{points}      {$replace{$get{member(points)}}{,}{}}
+										{target_flag} {0}
+										{battle_flag} {0}
+										{honor_flag}  {0}
+										{is_stronger_group}{0}
+									}
+								}
+							}
+						}
+					$void{</block>}}
+				$//:</allianceInfo>
+				$//:<buildInfo>
+					{buildInfo}{$void{<block>}
+						$array.forEach{$hashTable.getKeys2{$get{info(result)}}}{buildInfo_key}{
+							$switch{$get{buildInfo_key}}{
+							$//	$$common_socket_debug_json{$get{buildInfo_key}}{BUILDINFO}
+							}
+						$//:<BuildInfoList>
+							{BuildInfoList}{$void{<block>}
+								$if{$equals{$get{object(planet_id)}{-1}}{-1}}{
+									$return{}
+								}
+
+								$array.forEach{$hashTable.getKeys2{$get{info(result(BuildInfoList))}}}{research_id}{
+									$$meta_insert_or_update{$hashTable.new
+										{table_name}{gc_building}
+										{object}{$hashTable.new
+											{planet_id}     {$get{object(planet_id)}}
+											{technology_id} {$get{research_id}}
+											{level}         {$get{info(result(BuildInfoList($get{research_id}(level))))}}
+										}
+									}
+								}
+								$hashTable.removeKey{$get{info(result)}}{BuildInfoList}
+							$void{</block>}}
+						$//:</BuildInfoList>
+						$//:<Planets>
+							{Planets}{$void{<block>}
+								$array.forEach{$hashTable.getValues2{$get{info(result(Planets))}}}{planet}{
+									$hashTable.combine{$get{planet}}{$hashTable.new
+										{player_id} {$get{object(player_id)}}
+										{position}  {$get{planet(planet)}}
+										{type}      {$get{planet(planet_type)}}
+									}
+									$set{serialized}{$$meta_serialize{gc_planet}{$get{planet}}}
+									$$meta_insert_or_update{$hashTable.new
+										{table_name}{gc_planet}
+										{object}{$get{serialized}}
+									}
+								$/*
+									$array.forEach{$array.new{gc_fleet}{gc_defense}{gc_building}}{key}{
+										$$meta_update{$hashTable.new
+											{table_name}{$get{key}}
+											{object}{$hashTable.new
+												{completion_time}{}
+											}
+											{conditions}{$array.new
+												{$array.new{planet_id}{=}{$get{planet(id)}}}
+												{$array.new{completion_time}{<=}{$time{}}}
+											}
+										}
+									}
+								$*/
+									$if{$or
+										{$not{$equals{$get{planet(b_hangar)}}{0}}}
+										{$not{$equals{$get{planet(b_building)}}{0}}}
+									}{
+										$array.forEach{$array.new{b_building_id}{b_hangar_id}}{b_id}{
+											$if{$not{$isEmpty{$get{planet($get{b_id})}}}}{
+												$$gc_setGlobal_curlys{}
+												$set{text}{$get{planet($get{b_id})}}
+												$set{text}{$substring
+													{$get{text}}
+													{$add{$indexOf
+														{$get{text}}
+														{$getGlobal{curly_open}}
+														{$add{$indexOf
+															{$get{text}}
+															{$getGlobal{curly_open}}
+														}{1}}
+													}{1}}
+													{$subtract{$length{$get{text}}}{2}}
+												}
+												$set{parts}{$array.parse{$get{text}}{;}}
+
+												$set{technology}{$hashTable.new
+													{id}{$$common_value{$array.parse{$get{parts[1]}}{:}}{[1]}}
+													{completion_time}{$toInteger{$multiply{$$common_value{$array.parse{$get{parts[5]}}{:}}{[1]}}{1000}}}
+												}
+
+											$//	$switch{$$meta_object{gc_technology}{technology_type_id}{id}{$get{technology(id)}}}{
+												$switch{0}{
+												}
+											$//:<build-queue>
+												{1}{
+													$$meta_insert_or_update{$hashTable.new
+														{table_name}{gc_building}
+														{object}{$hashTable.new
+															{planet_id}       {$get{planet(id)}}
+															{level}           {$$meta_object{gc_building}{level}{$array.new
+																{$array.new{planet_id}     {=}{$get{planet(id)}}}
+																{$array.new{technology_id} {=}{$get{technology(id)}}}
+															}}
+															{technology_id}   {$get{technology(id)}}
+															{completion_time} {$add
+																{$time{}}
+																{$get{technology(completion_time)}}
+															}
+														}
+													}
+												}
+											$//:</build-queue>
+											$//:<shipyard-fleet>
+												{3}{
+													$$meta_insert_or_update{$hashTable.new
+														{table_name}{gc_fleet}
+														{object}{$hashTable.new
+															{planet_id}       {$get{planet(id)}}
+															{level}           {$$meta_object{gc_fleet}{level}{$array.new
+																{$array.new{planet_id}     {=}{$get{planet(id)}}}
+																{$array.new{technology_id} {=}{$get{technology(id)}}}
+															}}
+															{technology_id}   {$get{technology(id)}}
+															{completion_time} {$get{technology(completion_time)}}
+														}
+													}
+												}
+											$//:</shipyard-fleet>
+											$//:<shipyard-defense>
+												{4}{
+													$$meta_insert_or_update{$hashTable.new
+														{table_name}{gc_defense}
+														{object}{$hashTable.new
+															{planet_id}       {$get{planet(id)}}
+															{level}           {$$meta_object{gc_defense}{level}{$array.new
+																{$array.new{planet_id}     {=}{$get{planet(id)}}}
+																{$array.new{technology_id} {=}{$get{technology(id)}}}
+															}}
+															{technology_id}   {$get{technology(id)}}
+															{completion_time} {$get{technology(completion_time)}}
+														}
+													}
+												}
+											$//:</shipyard-defense>
+											}
+										}
+									}
+								}
+							$void{</block>}}
+						$//:</Planets>
+						$//:<PlanetInfo>
+							{PlanetInfo}{$void{<block>}
+								$set{planet}{$get{info(result(PlanetInfo))}}
+
+								$hashTable.combine{$get{planet}}{$hashTable.new
+									{player_id}     {$get{object(player_id)}}
+									{position}      {$get{planet(planet)}}
+									{field_max}     {$get{planet(field_max)}}
+									{field_current} {$get{planet(field_current)}}
+									{type}          {$get{planet(planet_type)}}
+									{metal}         {$toInteger{$get{planet(metal)}}}
+									{crystal}       {$toInteger{$get{planet(crystal)}}}
+									{deuterium}     {$toInteger{$get{planet(deuterium)}}}
+								}
+
+								$if{$equals{$get{planet(player_id)}{-1}}{-1}}{
+									$set{planet(player_id)}{$$meta_object{gc_planet}{player_id}{$array.new
+										{$array.new{galaxy}{=}{$get{planet(galaxy)}}}
+										{$array.new{system}{=}{$get{planet(system)}}}
+										{$array.new{position}{=}{$get{planet(position)}}}
+										{$array.new{type}{=}{1}}
+									}}
+								}
+
+								$set{serialized}{$$meta_serialize{gc_planet}{$get{planet}}}
+
+								$$meta_insert_or_update{$hashTable.new
+									{table_name}{gc_planet}
+									{object}{$get{serialized}}
+								}
+							$void{</block>}}
+						$//:</PlanetInfo>
+						}
+					$void{</block>}}
+				$//:</buildInfo>
+				$// <eventInfo>
+				$// </eventInfo>
+				$// <fleetInfo>
+					{fleetInfo}{$void{<block>}
+						$array.forEach{$get{info(FleetsOnPlanet)}}{fleet}{
+							$$meta_insert_or_update{$hashTable.new
+								{table_name}{gc_fleet}
+								{object}{$hashTable.new
+									{planet_id}      {$get{object(planet_id)}}
+									{technology_id}  {$get{fleet(id)}}
+									{level}          {$get{fleet(count)}}
+								}
+							}
+						}
+
+						$array.forEach{$get{info(FlyingFleetList)}}{fleet}{
+							$set{message}{}
+							$append{message}{Fleet [$get{fleet(id)}] flying$\ }
+							$append{message}{from$\ [$get{fleet(startGalaxy)}:$get{fleet(startSystem)}:$get{fleet(startPlanet)}]}
+							$append{message}{to$\ [$get{fleet(endGalaxy)}:$get{fleet(endSystem)}:$get{fleet(endPlanet)}]}
+							$append{message}{$\nStart was at $get{fleet(startTime)}}
+							$append{message}{$\nBack in      $get{fleet(backin)}}
+							$append{message}{$\nthats at     $get{fleet(endTime)}}
+							$append{message}{$\nflight time  $getTime{convert}{$get{fleet(reachtime)}000}{hh:nn:ss}}
+						$//	$$common_socket_debug_plain{$get{message}}
+
+$/*
+            "state": "0",
+            "acsID": "0",
+            "targetName": "Kolonie (Clear)",
+            "amount": "1",
+            "isCreator": 0,
+            "mission": "4",
+            "reachtime": 1929,
+            "backtime": 1929,
+            "FleetList": {
+              "209": "1"
+            },
+            "fromName": "Planet"
+
+$*/
+
+					$void{</block>}}
+				$// </fleetInfo>
+				$// <itemInfo>
+				$// </itemInfo>
+				$// <mailInfo>
+				$// </mailInfo>
+				$// <matchInfo>
+				$// </matchInfo>
+				$// <newsInfo>
+				$// </newsInfo>
+				$// <officerInfo>
+				$// </officerInfo>
+				$// <repairInfo>
+				$// </repairInfo>
+				$//:<researchInfo>
+					{researchInfo}{$void{<block>}
+						$array.forEach{$hashTable.getValues2{$get{info(result(ResearchList))}}}{research}{
+							$$meta_insert_or_update{$hashTable.new
+								{table_name}{gc_research}
+								{object}{$hashTable.new
+									{player_id}      {$get{object(player_id)}}
+									{technology_id}  {$get{research(id)}}
+									{level}          {$get{research(level)}}
+								}
+							}
+						}
+
+						$if{$existsLocal{info(result(Queue))}}{
+							$array.forEach{$get{info(result(Queue))}}{item}{
+								$$meta_insert_or_update{$hashTable.new
+									{table_name}{gc_research}
+									{object}{$hashTable.new
+										{player_id}      {$get{object(player_id)}}
+										{technology_id}  {$get{item(element)}}
+										{level}          {$get{item(level)}}
+										{completion_time}{$get{item(endtime)}}
+									}
+								}
+							}
+						}
+					$void{</block>}}
+				$//:</researchInfo>
+				$//:<shipInfo>
+					{shipInfo}{$void{<block>}
+						$set{technology_hash}{$$common_id_hash{$$meta_select{$hashTable.new
+							{table_name}{gc_technology}
+							{conditions}{$array.new
+								{$array.new{id}{!=}{-1}}
+							}
+						}}}
+						$set{technology_type_hash}{$$common_id_hash{$$meta_select{$hashTable.new
+							{table_name}{gc_technology_type}
+							{conditions}{$array.new
+								{$array.new{id}{!=}{-1}}
+							}
+						}}}
+
+						$array.forEach{$hashTable.getValues2{$get{info(result(FleetList))}}}{fleet}{
+							$set{technology}     {$get{technology_hash($get{fleet(id)})}}
+							$set{technology_type}{$get{technology_type_hash($get{technology(technology_type_id)})}}
+
+							$switch{$get{technology_type(id)}}{}
+							{1}{$/* -hier nicht- $*/} $// Building
+							{2}{$/* -hier nicht- $*/} $// Research
+						$// Fleet
+							{3}{
+								$$meta_insert_or_update{$hashTable.new
+									{table_name}{gc_fleet}
+									{object}{$hashTable.new
+										{planet_id}      {$get{object(planet_id)}}
+										{technology_id}  {$get{fleet(id)}}
+										{level}          {$get{fleet(available)}}
+									}
+								}
+							}
+						$// Defense
+							{4}{
+								$$meta_insert_or_update{$hashTable.new
+									{table_name}{gc_defense}
+									{object}{$hashTable.new
+										{planet_id}       {$get{planet(id)}}
+										{technology_id}   {$get{fleet(id)}}
+										{level}           {$get{fleet(available)}}
+									}
+								}
+							}
+						}
+					$void{</block>}}
+				$//:</shipInfo>
+				$// <taskInfo>
+				$// </taskInfo>
+				$//:<info>
+					{info}{$void{<block>}
+						$$meta_insert_or_update{$hashTable.new
+							{table_name}{gc_alliance}
+							{object}{$hashTable.new
+								{id}        {$get{info(ally_info(id))}}
+								{name}      {$get{info(ally_info(name))}}
+								{rank}      {$get{info(ally_info(rank))}}
+								{points}    {$get{info(ally_info(points))}}
+							}
+						}
+
+						$array.forEach{$get{info(Memberlist)}}{member}{
+							$$meta_insert_or_update{$hashTable.new
+								{table_name}{gc_player}
+								{object}{$hashTable.new
+									{id}          {$get{member(id)}}
+									{alliance_id} {$get{info(ally_info(id))}}
+									{name}        {$get{member(username)}}
+									{inactive}    {$moreOrEqual{$get{member(last_online)}}{7}}
+									{longinactive}{$moreOrEqual{$get{member(last_online)}}{14}}
+									{points}      {$replace{$get{member(points)}}{,}{}}
+								}
+							}
+						}
+					$void{</block>}}
+				$//:</info>
+				}
+			$void{</block>}}
+			{FleetsOnPlanet / FlyingFleetList}{
+			$//	$$common_socket_debug_json{$get{object}}
+			}
+			{diplomacy}{
+				$array.forEach{$get{object(data(result(ally)))}}{alliance}{
+					$$meta_insert_or_update{$hashTable.new
+						{table_name}{gc_alliance}
+						{object}{$hashTable.new
+							{id}        {$get{alliance(id)}}
+							{name}      {$get{alliance(name)}}
+							{rank}      {$get{alliance(rank)}}
+							{points}    {$get{alliance(point)}}
+						}
+					}
+				}
+			}
+		}
+	}
+$//~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+$//:$$gc_typify_object{object}
+	$*gc_typify_object{object}{
+		$set{object(types)}{$array.new}
+
+	$//:ok
+		$if{$and
+			{$not{$isEmpty{$get{object(data)}}}}
+			{$not{$existsLocal{object(data(result))}}}
+		}{
+			$array.add{$get{object(types)}}{ok}
+		}
+
+	$//:empty list
+		$if{$and
+			{$not{$isEmpty{$get{object(data)}}}}
+			{$array.isArray{$get{object(data(result))}{}}}
+			{$equals{$get{object(data(result))}}{0}}
+		}{
+			$array.add{$get{object(types)}}{empty list}
+		}
+
+	$//:empty
+		$if{$and
+			{      $equals{$get{object(data(status))}{}}{ok}}
+			{$not{$isEmpty{$get{object(data)}}}}
+			{$or{ $isEmpty{$get{object(data(result))}{}}}
+				{  $equals{$get{object(data(result))}{}}{1}}
+			}
+		}{
+			$array.add{$get{object(types)}}{empty}
+		}
+
+	$//:chat
+		$if{$and
+			{$existsLocal{object(data(result[0(user_id)]))}}
+			{$existsLocal{object(data(result[0(username)]))}}
+			{$existsLocal{object(data(result[0(channelID)]))}}
+		}{
+			$array.add{$get{object(types)}}{chat}
+		}
+
+	$//:galaxy
+		$if{$existsLocal{object(data(result(planets)))}}{
+			$array.add{$get{object(types)}}{galaxy}
+		}
+
+	$//:ally_search_result
+		$if{$and
+			{$existsLocal{object(data(result(info)))}}
+			{$existsLocal{object(data(result(code)))}}
+			{$equals{$get{object(data(result(code)))}}{ally_search_result}}
+		}{
+			$array.add{$get{object(types)}}{ally_search_result}
+		}
+
+	$//:ally_apply_send
+		$if{$and
+			{$existsLocal{object(data(result(info)))}}
+			{$existsLocal{object(data(result(code)))}}
+			{$equals{$get{object(data(result(code)))}}{ally_apply_send}}
+		}{
+			$array.add{$get{object(types)}}{ally_apply_send}
+		}
+
+	$//:alliance_01
+		$if{$and
+			{$existsLocal{object(data(result[0(id)]))}}
+			{$existsLocal{object(data(result[0(ceo)]))}}
+			{$existsLocal{object(data(result[0(point)]))}}
+			{$existsLocal{object(data(result[0(rank)]))}}
+			{$existsLocal{object(data(result[0(name)]))}}
+			{$existsLocal{object(data(result[0(member_num)]))}}
+		}{
+			$array.add{$get{object(types)}}{alliance_01}
+		}
+
+	$//:rangelist
+		$if{$and
+			{$existsLocal{object(data(result(who)))}}
+			{$existsLocal{object(data(result(type)))}}
+			{$existsLocal{object(data(result(range)))}}
+			{$existsLocal{object(data(result(RangeList)))}}
+		}{
+			$array.add{$get{object(types)}}{rangelist}
+		}
+
+	$//:pre_match_state
+		$if{$and
+			{$not{$isEmpty{$get{object(data)}}}}
+			{$existsLocal{object(data(result(pre_match_state)))}}
+		}{
+			$array.add{$get{object(types)}}{pre_match_state}
+		}
+
+	$//:info
+		$if{$or
+			{$existsLocal{object(data(result(allianceInfo)))}}
+			{$existsLocal{object(data(result(buildInfo)))}}
+			{$existsLocal{object(data(result(eventInfo)))}}
+			{$existsLocal{object(data(result(fleetInfo)))}}
+			{$existsLocal{object(data(result(itemInfo)))}}
+			{$existsLocal{object(data(result(mailInfo)))}}
+			{$existsLocal{object(data(result(matchInfo)))}}
+			{$existsLocal{object(data(result(newsInfo)))}}
+			{$existsLocal{object(data(result(officerInfo)))}}
+			{$existsLocal{object(data(result(repairInfo)))}}
+			{$existsLocal{object(data(result(researchInfo)))}}
+			{$existsLocal{object(data(result(shipInfo)))}}
+			{$existsLocal{object(data(result(taskInfo)))}}
+		}{
+			$array.add{$get{object(types)}}{$hashTable.new
+				{info}{$hashTable.getKeys2{$get{object(data(result))}}}
+			}
+		}
+
+	$//:action response
+		$if{$existsLocal{object(data(result(action)))}}{
+			$array.add{$get{object(types)}}{action response}
+		}
+
+	$//:fleet action (1)
+		$if{$and
+			{$existsLocal{object(data(result(id)))}}
+			{$existsLocal{object(data(result(fleetStartTime)))}}
+			{$existsLocal{object(data(result(fleetEndTime)))}}
+		}{
+			$array.add{$get{object(types)}}{fleet action (1)}
+		}
+
+	$//:fleet action (2)
+		$if{$and
+			{$existsLocal{object(data(result(token)))}}
+			{$existsLocal{object(data(result(distance)))}}
+			{$existsLocal{object(data(result(duration)))}}
+		}{
+			$array.add{$get{object(types)}}{fleet action (2)}
+		}
+
+	$//:FleetsOnPlanet / FlyingFleetList
+		$if{$and
+			{$existsLocal{object(data(result(FleetsOnPlanet)))}}
+			{$existsLocal{object(data(result(FlyingFleetList)))}}
+		}{
+			$array.add{$get{object(types)}}{FleetsOnPlanet / FlyingFleetList}
+		}
+
+	$//:MessageList
+		$if{$existsLocal{object(data(result(MessageList)))}}{
+			$array.add{$get{object(types)}}{MessageList}
+		}
+
+	$//:Raport
+		$if{$existsLocal{object(data(result(Raport)))}}{
+			$array.add{$get{object(types)}}{Raport}
+		}
+
+	$//:diplomacy
+		$if{$and
+			{$existsLocal{object(data(result(max_ally_num)))}}
+			{$existsLocal{object(data(result(max_enemy_num)))}}
+		}{
+			$array.add{$get{object(types)}}{diplomacy}
+		}
+
+	$//:intelligence
+		$if{$and
+			{$existsLocal{object(data(result(per_page)))}}
+			{$existsLocal{object(data(result(total_page)))}}
+			{$existsLocal{object(data(result(list)))}}
+			{$existsLocal{object(data(result(current_page)))}}
+		}{
+			$array.add{$get{object(types)}}{intelligence}
+		}
+	}
+$//~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+$//:$$gc_setGlobal_curlys
+	$*gc_setGlobal_curlys{
+		$setGlobal{curly_open}{$0{$1}
+		$setGlobal{curly_close}{$0}$1}
+	}
+$//~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
